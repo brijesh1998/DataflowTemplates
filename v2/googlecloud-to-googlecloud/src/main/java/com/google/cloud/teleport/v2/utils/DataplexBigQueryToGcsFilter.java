@@ -42,11 +42,11 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
   private final Pattern includePartitions;
   private final String writeDisposition;
   private final String fileSuffix;
-  private final List<String> existingTargetFiles;
+  private final String targetRootPath;
   private final BigQueryToGcsDirectoryNaming directoryNaming;
 
   public DataplexBigQueryToGcsFilter(
-      DataplexBigQueryToGcsOptions options, List<String> existingTargetFiles) {
+      DataplexBigQueryToGcsOptions options, String targetRootPath) {
     String dateTime = options.getExportDataModifiedBeforeDateTime();
     if (dateTime != null && !dateTime.isEmpty()) {
       if (dateTime.startsWith("-P") || dateTime.startsWith("-p")) {
@@ -81,11 +81,12 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
 
     this.writeDisposition = options.getWriteDisposition().getWriteDispositionOption();
     this.fileSuffix = options.getFileFormat().getFileSuffix();
-    this.existingTargetFiles = existingTargetFiles;
+    this.targetRootPath = targetRootPath;
     this.directoryNaming = new BigQueryToGcsDirectoryNaming(options.getEnforceSamePartitionKey());
   }
 
-  private boolean shouldSkipTableName(BigQueryTable.Builder table) {
+  @Override
+  public boolean shouldSkipTableName(BigQueryTable.Builder table) {
     if (includeTables != null && !includeTables.contains(table.getTableName())) {
       return true;
     }
@@ -134,9 +135,14 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
     }
     // Check if the target file already exists.
     String expectedTargetPath = tableTargetFileName(table);
-    if (existingTargetFiles.contains(expectedTargetPath)) {
+    if (!GCSUtils.isDirectoryEmpty(expectedTargetPath)) {
       return shouldSkipFile(table.getTableName(), null, expectedTargetPath);
     }
+    // for (String existingFile : existingTargetFiles) {
+    //   if (existingFile.startsWith(expectedTargetPath)) {
+    //     return shouldSkipFile(table.getTableName(), null, expectedTargetPath);
+    //   }
+    // }
     return false;
   }
 
@@ -165,17 +171,28 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
       return true;
     }
     if (includePartitions != null && !includePartitions.matches(partition.getPartitionName())) {
-      LOG.info(
-          "Skipping partition {} not matching regexp: {}",
-          partition.getPartitionName(),
-          includePartitions.pattern());
+      // LOG.info(
+      //     "Skipping partition {} not matching regexp: {}",
+      //     partition.getPartitionName(),
+      //     includePartitions.pattern());
       return true;
     }
     // Check if target file already exists.
     String expectedTargetPath = partitionTargetFileName(table, partition);
-    if (existingTargetFiles.contains(expectedTargetPath)) {
+    LOG.info(
+          "Expected path {} existing files",
+          expectedTargetPath);
+    // LOG.info(existingTargetFiles.toString());
+    LOG.info(expectedTargetPath);
+    Boolean isEmpty = GCSUtils.isDirectoryEmpty(expectedTargetPath);
+    if (!isEmpty) {
       return shouldSkipFile(table.getTableName(), partition.getPartitionName(), expectedTargetPath);
     }
+    // for (String existingFile : existingTargetFiles) {
+    //   if (existingFile.startsWith(expectedTargetPath)) {
+    //     return shouldSkipFile(table.getTableName(), partition.getPartitionName(), expectedTargetPath);
+    //   }
+    // }
     return false;
   }
 
@@ -184,7 +201,10 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
     String fileName =
         new BigQueryToGcsFileNaming(fileSuffix, table.getTableName())
             .getFilename(null, null, 0, 0, null);
-    return dirName + "/" + fileName;
+    String targetPath =
+      String.format(
+          "%s/%s", targetRootPath, directoryNaming.getTableDirectory(table.getTableName()));
+    return targetPath;
   }
 
   public String partitionTargetFileName(
@@ -195,6 +215,12 @@ public class DataplexBigQueryToGcsFilter implements BigQueryMetadataLoader.Filte
     String fileName =
         new BigQueryToGcsFileNaming(fileSuffix, table.getTableName(), partition.getPartitionName())
             .getFilename(null, null, 0, 0, null);
-    return dirName + "/" + fileName;
+    String targetPath =
+      String.format(
+          "%s/%s",
+          targetRootPath,
+          directoryNaming.getPartitionDirectory(
+              table.getTableName(), partition.getPartitionName(), table.getPartitioningColumn()));
+    return targetPath;
   }
 }

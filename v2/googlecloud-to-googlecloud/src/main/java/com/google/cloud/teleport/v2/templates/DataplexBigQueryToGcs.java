@@ -42,7 +42,6 @@ import com.google.cloud.teleport.v2.utils.BigQueryToGcsDirectoryNaming;
 import com.google.cloud.teleport.v2.utils.BigQueryUtils;
 import com.google.cloud.teleport.v2.utils.DataplexBigQueryToGcsFilter;
 import com.google.cloud.teleport.v2.utils.DataplexUtils;
-import com.google.cloud.teleport.v2.utils.GCSUtils;
 import com.google.cloud.teleport.v2.values.BigQueryTable;
 import com.google.cloud.teleport.v2.values.BigQueryTablePartition;
 import com.google.cloud.teleport.v2.values.DataplexEnums.DataplexAssetResourceSpec;
@@ -189,12 +188,12 @@ public class DataplexBigQueryToGcs {
       throws ExecutionException, InterruptedException, IOException {
 
     Pipeline pipeline = Pipeline.create(options);
-    List<String> existingTargetFiles = GCSUtils.getFilesInDirectory(targetRootPath);
+    List<String> existingTargetFiles = new ArrayList<String>();//GCSUtils.getFilesInDirectory(targetRootPath);
 
     LOG.info("Loading BigQuery metadata...");
     List<BigQueryTable> tables =
         metadataLoader.loadDatasetMetadata(
-            datasetId, new DataplexBigQueryToGcsFilter(options, existingTargetFiles));
+            datasetId, new DataplexBigQueryToGcsFilter(options, targetRootPath));
     LOG.info("Loaded {} table(s).", tables.size());
 
     if (options.getUpdateDataplexMetadata()) {

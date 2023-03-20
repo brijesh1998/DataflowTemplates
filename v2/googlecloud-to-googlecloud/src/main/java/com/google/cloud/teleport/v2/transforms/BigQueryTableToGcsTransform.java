@@ -25,6 +25,7 @@ import com.google.cloud.teleport.v2.values.DataplexCompression;
 import com.google.common.annotations.VisibleForTesting;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +55,8 @@ import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionList;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.beam.sdk.values.TypeDescriptors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Reads data from a BigQuery table, writes it to Cloud Storage, and outputs {@code
@@ -75,6 +78,7 @@ public class BigQueryTableToGcsTransform
   private final String targetRootPath;
   private final boolean enforceSamePartitionKey;
   private transient BigQueryServices testServices;
+  private static final Logger LOG = LoggerFactory.getLogger(BigQueryTableToGcsTransform.class);
 
   public BigQueryTableToGcsTransform(
       BigQueryTable table,
@@ -121,7 +125,7 @@ public class BigQueryTableToGcsTransform
     }
 
     BigQueryToGcsDirectoryNaming dn = new BigQueryToGcsDirectoryNaming(enforceSamePartitionKey);
-
+    LOG.info("Table states : {} : {}", table.isPartitioned(), table.getTableName());
     if (!table.isPartitioned()) {
       return transformTable(begin, sink, dn);
     }
@@ -171,14 +175,29 @@ public class BigQueryTableToGcsTransform
       BigQueryTablePartition partition,
       BigQueryToGcsDirectoryNaming directoryNaming) {
 
+    LocalDate date = LocalDate.parse(partition.getPartitionName(), DateTimeFormatter.BASIC_ISO_DATE);
+    LOG.info(date.toString());
+    // String rowFilter = String.format(
+    //           "DATE(%s) = \"%s\"",
+    //           table.getPartitioningColumn(), date.toString());
     String sql =
         String.format(
-            "select * from [%s.%s.%s$%s]",
+            "select * from %s.%s.%s where DATE(%s) = \"%s\"",
             table.getProject(),
             table.getDataset(),
             table.getTableName(),
-            partition.getPartitionName());
+            // partition.getPartitionName());
+            table.getPartitioningColumn(),
+            date.toString());
+    // TableReference tr = new TableReference()
+    //   .setDatasetId(table.getDataset())
+    //   .setProjectId(table.getProject())
+    //   .setTableId(String.format("%s$%s",
+    //     table.getTableName(),
+    //     partition.getPartitionName()));
 
+    LOG.info(sql);
+    // LOG.info(tr.toString());
     String targetPath =
         String.format(
             "%s/%s",
@@ -187,7 +206,11 @@ public class BigQueryTableToGcsTransform
                 table.getTableName(), partition.getPartitionName(), table.getPartitioningColumn()));
 
     return begin
-        .apply(partitionNodeName("Read", partition), getDefaultRead().fromQuery(sql))
+        .apply(
+          partitionNodeName("Read", partition),
+          getDefaultRead()
+            .fromQuery(sql)
+            .usingStandardSql())
         .apply(
             partitionNodeName("Write", partition),
             getDefaultWrite()
@@ -217,7 +240,7 @@ public class BigQueryTableToGcsTransform
             // There is probably a bug in BigQueryIO that causes "IllegalMutationException:
             // PTransform BigQueryIO.TypedRead/ParDo(Anonymous)/ParMultiDo(Anonymous) mutated
             // value ... after it was output" when using read() + DIRECT_READ + other conditions.
-            .withMethod(TypedRead.Method.EXPORT)
+            .withMethod(TypedRead.Method.DIRECT_READ)
             .withCoder(AvroCoder.of(table.getSchema()));
 
     return testServices == null ? read : read.withTestServices(testServices);
@@ -265,8 +288,8 @@ public class BigQueryTableToGcsTransform
   }
 
   private Write<Void, GenericRecord> getDefaultWrite() {
-    return FileIO.<GenericRecord>write()
-        .withNumShards(1); // Must be 1 as we can only have 1 file per partition.
+    return FileIO.<GenericRecord>write();
+        // .withNumShards(numShardsInGCS); // Must be 1 as we can only have 1 file per partition.
   }
 
   private String tableNodeName(String prefix) {

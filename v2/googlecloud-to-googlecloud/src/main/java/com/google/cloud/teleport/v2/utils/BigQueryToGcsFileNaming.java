@@ -43,8 +43,8 @@ public class BigQueryToGcsFileNaming implements FileNaming {
       BoundedWindow window, PaneInfo pane, int numShards, int shardIndex, Compression compression) {
     String filename =
         partitionName != null
-            ? String.format("output-%s-%s%s", tableName, partitionName, suffix)
-            : String.format("output-%s%s", tableName, suffix);
+        ? String.format("output-%s-%s-%d-of-%d%s", tableName, partitionName, shardIndex, numShards, suffix)
+        : String.format("output-%s-%d-of-%d%s", tableName, shardIndex, numShards, suffix);
     return filename;
   }
 }
