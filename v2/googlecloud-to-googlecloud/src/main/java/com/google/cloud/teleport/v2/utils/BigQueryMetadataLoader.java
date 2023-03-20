@@ -140,6 +140,10 @@ public class BigQueryMetadataLoader {
       throws InterruptedException {
     TableReadOptions.Builder readOptions = TableReadOptions.newBuilder();
 
+    if (filter != null && filter.shouldSkipTableName(table)) {
+      return false;
+    }
+
     if (table.getPartitioningColumn() == null) {
       if (filter != null && filter.shouldSkipUnpartitionedTable(table)) {
         return false;
@@ -227,6 +231,7 @@ public class BigQueryMetadataLoader {
    * loading the list of partitions for a table when the whole table is filtered out anyway).
    */
   public interface Filter {
+    boolean shouldSkipTableName(BigQueryTable.Builder table);
     boolean shouldSkipUnpartitionedTable(BigQueryTable.Builder table);
 
     boolean shouldSkipPartitionedTable(

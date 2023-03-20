@@ -88,6 +88,26 @@ public class GCSUtils {
   }
 
   /**
+   * Returns true is given directory path does not contain any files.
+   *
+   * @param path input path
+   * @return boolean
+   */
+  public static Boolean isDirectoryEmpty(String path) {
+    try {
+      String pathPrefix = path + "/";
+      MatchResult result = FileSystems.match(pathPrefix + "**", EmptyMatchTreatment.ALLOW);
+      Integer fileCount = result.metadata().size();
+      LOG.info("{} file(s) found in directory {}", fileCount, path);
+      LOG.info(""+ fileCount);
+      LOG.info(path);
+      return fileCount == 0;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
    * The {@link SchemaUtils#getGcsFileAsString(String)} reads a file from GCS and returns it as a
    * string.
    *
